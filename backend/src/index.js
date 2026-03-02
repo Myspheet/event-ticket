@@ -20,6 +20,8 @@ app.use(
   cors({
     origin: function (origin, callback) {
       // Allow requests with no origin (mobile apps, curl, server-to-server)
+      console.log("CORS Origin:", origin);
+      console.log("Allowed Origins:", allowedOrigins);
       if (!origin) return callback(null, true);
       if (allowedOrigins.includes(origin)) {
         return callback(null, true);
