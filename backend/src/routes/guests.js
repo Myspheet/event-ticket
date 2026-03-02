@@ -82,29 +82,8 @@ router.get("/checked-in", async (req, res) => {
   }
 });
 
-// GET /api/guests/:id
-router.get("/:id", async (req, res) => {
-  try {
-    const guest = await db.get("SELECT * FROM guests WHERE id = ?", [
-      req.params.id,
-    ]);
-    if (!guest) return res.status(404).json({ error: "Guest not found" });
-
-    let children = [];
-    if (guest.type === "parent") {
-      children = await db.all("SELECT * FROM guests WHERE parent_id = ?", [
-        guest.id,
-      ]);
-    }
-
-    res.json({ ...guest, children });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
-
 // GET /api/guests/code/:uniqueCode — lookup by unique code (used from QR scan)
+// NOTE: This must be defined BEFORE the /:id route, otherwise Express matches "code" as an :id param
 router.get("/code/:uniqueCode", async (req, res) => {
   try {
     const guest = await db.get("SELECT * FROM guests WHERE unique_code = ?", [
@@ -128,6 +107,60 @@ router.get("/code/:uniqueCode", async (req, res) => {
     }
 
     res.json({ ...guest, children, parent });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// GET /api/guests/code/:uniqueCode — lookup by unique code (used from QR scan)
+// NOTE: This must be defined BEFORE the /:id route, otherwise Express matches "code" as an :id param
+router.get("/backup/:uniqueCode", async (req, res) => {
+  try {
+    const guest = await db.get("SELECT * FROM guests WHERE backup_code = ?", [
+      req.params.uniqueCode,
+    ]);
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+
+    let children = [];
+    let parent = null;
+
+    if (guest.type === "parent") {
+      children = await db.all(
+        "SELECT id, name, unique_code, backup_code, seat_number, checked_in FROM guests WHERE parent_id = ?",
+        [guest.id],
+      );
+    } else if (guest.parent_id) {
+      parent = await db.get(
+        "SELECT id, name, unique_code FROM guests WHERE id = ?",
+        [guest.parent_id],
+      );
+    }
+
+    res.json({ ...guest, children, parent });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+
+// GET /api/guests/:id
+router.get("/:id", async (req, res) => {
+  try {
+    const guest = await db.get("SELECT * FROM guests WHERE id = ?", [
+      req.params.id,
+    ]);
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+
+    let children = [];
+    if (guest.type === "parent") {
+      children = await db.all("SELECT * FROM guests WHERE parent_id = ?", [
+        guest.id,
+      ]);
+    }
+
+    res.json({ ...guest, children });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Internal server error" });
