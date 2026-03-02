@@ -42,7 +42,7 @@ export default function CheckInPanel() {
     setLoading(true);
     setResult(null);
     try {
-      const res = await api.get(`/guests/code/${c}`);
+      const res = await api.get(`/guests/backup/${c}`);
       setResult({ guest: res.data, error: null });
     } catch (err) {
       const msg = err.response?.data?.error || 'Guest not found';
