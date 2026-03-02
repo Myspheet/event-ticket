@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 
 // Unauthenticated fetch using plain axios (no auth interceptor redirect)
-const publicApi = axios.create({ baseURL: '/api' });
+const publicApi = axios.create({ baseURL: import.meta.env.VITE_API_URL });
 
 function Detail({ icon: Icon, label, value }) {
   if (!value) return null;
