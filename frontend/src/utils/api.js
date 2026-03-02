@@ -1,7 +1,13 @@
 import axios from 'axios';
 
+console.log("API URL:", import.meta.env.VITE_API_URL);
+console.log("Mode:", import.meta.env.MODE);
+
 const api = axios.create({
-  baseURL: '/api',
+  baseURL:
+    import.meta.env.MODE === "development"
+      ? "/api" // dev proxy
+      : import.meta.env.VITE_API_URL, // prod URL
 });
 
 // Attach JWT token to every request
