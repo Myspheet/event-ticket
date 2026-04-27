@@ -11,6 +11,9 @@ const publicRoutes = require('./routes/public');
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+// Required for accurate req.ip when behind a proxy / load balancer
+app.set('trust proxy', 1);
+
 // Middleware
 const allowedOrigins = (process.env.FRONTEND_URL || "http://localhost:5173")
   .split(",")

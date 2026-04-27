@@ -3,32 +3,69 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import api from '../utils/api';
 import toast from 'react-hot-toast';
 import {
-  Users, UserCheck, UserPlus, Pencil, Trash2, CreditCard, ChevronDown,
-  ChevronRight, Search, RefreshCw, UserX, CheckCircle2, CircleDot, LayoutDashboard
-} from 'lucide-react';
+  Users,
+  UserCheck,
+  UserPlus,
+  Pencil,
+  Trash2,
+  CreditCard,
+  ChevronDown,
+  ChevronRight,
+  Search,
+  RefreshCw,
+  UserX,
+  LogOut,
+  RotateCcw,
+  CheckCircle2,
+  CircleDot,
+  LayoutDashboard,
+} from "lucide-react";
 import GuestCard from '../components/GuestCard';
 import GuestFormModal from '../components/GuestFormModal';
 import ConfirmModal from '../components/ConfirmModal';
 import CheckInPanel from './CheckInPanel';
+import { StatusBadge, guestStatus, STATUS } from "../utils/guestStatus";
 
 // ─── Stats cards ────────────────────────────────────────────
 function StatsBar({ guests }) {
   const all = guests.flatMap(p => [p, ...(p.children || [])]);
   const total = all.length;
-  const checkedIn = all.filter(g => g.checked_in).length;
+  const inside = all.filter((g) => guestStatus(g) === STATUS.INSIDE).length;
   const parents = guests.length;
   const children = all.filter(g => g.type === 'child').length;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
       {[
-        { label: 'Total Guests', value: total, icon: Users, color: 'bg-blue-50 text-blue-600' },
-        { label: 'Checked In', value: checkedIn, icon: UserCheck, color: 'bg-emerald-50 text-emerald-600' },
-        { label: 'Parents', value: parents, icon: Users, color: 'bg-purple-50 text-purple-600' },
-        { label: 'Children', value: children, icon: Users, color: 'bg-amber-50 text-amber-600' },
+        {
+          label: "Total Guests",
+          value: total,
+          icon: Users,
+          color: "bg-blue-50 text-blue-600",
+        },
+        {
+          label: "Currently Inside",
+          value: inside,
+          icon: UserCheck,
+          color: "bg-emerald-50 text-emerald-600",
+        },
+        {
+          label: "Parents",
+          value: parents,
+          icon: Users,
+          color: "bg-purple-50 text-purple-600",
+        },
+        {
+          label: "Children",
+          value: children,
+          icon: Users,
+          color: "bg-amber-50 text-amber-600",
+        },
       ].map(({ label, value, icon: Icon, color }) => (
         <div key={label} className="card flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}>
+          <div
+            className={`w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0 ${color}`}
+          >
             <Icon size={22} />
           </div>
           <div>
@@ -42,76 +79,176 @@ function StatsBar({ guests }) {
 }
 
 // ─── Guest row ────────────────────────────────────────────────
-function GuestRow({ guest, depth = 0, onViewCard, onEdit, onDelete, onCheckin, onCheckout, onAddChild }) {
+function GuestRow({
+  guest,
+  depth = 0,
+  onViewCard,
+  onEdit,
+  onDelete,
+  onCheckin,
+  onStepOut,
+  onFinalExit,
+  onReopen,
+  onAddChild,
+}) {
   const [expanded, setExpanded] = useState(true);
   const hasChildren = guest.children?.length > 0;
-  const isParent = guest.type === 'parent';
+  const isParent = guest.type === "parent";
+  const status = guestStatus(guest);
+
+  const statusActions = (() => {
+    if (status === STATUS.INSIDE) {
+      return (
+        <>
+          <button
+            onClick={() => onStepOut(guest)}
+            className="btn-warning text-xs py-1 px-2"
+            title="Step out (allow re-entry)"
+          >
+            <LogOut size={12} />
+            Step
+          </button>
+          <button
+            onClick={() => onFinalExit(guest)}
+            className="btn-danger text-xs py-1 px-2"
+            title="Final exit (no re-entry without admin)"
+          >
+            <UserX size={12} />
+            Exit
+          </button>
+        </>
+      );
+    }
+    if (status === STATUS.DEPARTED) {
+      return (
+        <button
+          onClick={() => onReopen(guest)}
+          className="btn-primary text-xs py-1 px-2"
+          title="Reopen pass for re-entry"
+        >
+          <RotateCcw size={12} />
+          Reopen
+        </button>
+      );
+    }
+    return (
+      <button
+        onClick={() => onCheckin(guest)}
+        className="btn-success text-xs py-1 px-2"
+      >
+        <UserCheck size={12} />
+        {status === STATUS.STEPPED_OUT ? "Re-enter" : "In"}
+      </button>
+    );
+  })();
 
   return (
     <>
-      <tr className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${depth > 0 ? 'bg-blue-50/30' : ''}`}>
+      <tr
+        className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${depth > 0 ? "bg-blue-50/30" : ""}`}
+      >
         <td className="py-3 px-4">
-          <div className="flex items-center gap-2" style={{ paddingLeft: depth * 24 }}>
+          <div
+            className="flex items-center gap-2"
+            style={{ paddingLeft: depth * 24 }}
+          >
             {isParent && (
               <button
-                onClick={() => setExpanded(v => !v)}
+                onClick={() => setExpanded((v) => !v)}
                 className="text-gray-400 hover:text-gray-600 flex-shrink-0"
               >
-                {hasChildren
-                  ? (expanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />)
-                  : <span className="w-3.5 inline-block" />}
+                {hasChildren ? (
+                  expanded ? (
+                    <ChevronDown size={14} />
+                  ) : (
+                    <ChevronRight size={14} />
+                  )
+                ) : (
+                  <span className="w-3.5 inline-block" />
+                )}
               </button>
             )}
             {!isParent && <span className="w-5 inline-block" />}
             <div>
               <p className="font-medium text-gray-800 text-sm">{guest.name}</p>
-              {guest.email && <p className="text-xs text-gray-400">{guest.email}</p>}
+              {guest.email && (
+                <p className="text-xs text-gray-400">{guest.email}</p>
+              )}
             </div>
           </div>
         </td>
-        <td className="py-3 px-4 text-sm text-gray-500">{guest.phone || '—'}</td>
-        <td className="py-3 px-4 text-sm text-gray-500">{guest.seat_number || '—'}</td>
+        <td className="py-3 px-4 text-sm text-gray-500">
+          {guest.phone || "—"}
+        </td>
+        <td className="py-3 px-4 text-sm text-gray-500">
+          {guest.seat_number || "—"}
+        </td>
         <td className="py-3 px-4">
-          <span className={`badge ${isParent ? 'badge-purple' : 'badge-blue'}`}>
-            {isParent ? 'Parent' : 'Child'}
+          <span className={`badge ${isParent ? "badge-purple" : "badge-blue"}`}>
+            {isParent ? "Parent" : "Child"}
           </span>
         </td>
         <td className="py-3 px-4">
-          {guest.checked_in
-            ? <span className="badge badge-green flex items-center gap-1 w-fit"><CheckCircle2 size={12} />Checked In</span>
-            : <span className="badge badge-gray flex items-center gap-1 w-fit"><CircleDot size={12} />Not Checked In</span>}
+          <div className="flex items-center gap-2">
+            <StatusBadge status={status} />
+            {(guest.entry_count ?? 0) > 0 && (
+              <span className="text-xs text-gray-400">
+                ×{guest.entry_count}
+              </span>
+            )}
+          </div>
         </td>
         <td className="py-3 px-4">
           <div className="flex items-center gap-1 flex-wrap">
-            <button onClick={() => onViewCard(guest)} className="btn-secondary text-xs py-1 px-2">
-              <CreditCard size={12} />Card
+            <button
+              onClick={() => onViewCard(guest)}
+              className="btn-secondary text-xs py-1 px-2"
+            >
+              <CreditCard size={12} />
+              Card
             </button>
-            {guest.checked_in
-              ? <button onClick={() => onCheckout(guest)} className="btn-warning text-xs py-1 px-2"><UserX size={12} />Out</button>
-              : <button onClick={() => onCheckin(guest)} className="btn-success text-xs py-1 px-2"><UserCheck size={12} />In</button>}
-            <button onClick={() => onEdit(guest)} className="btn-secondary text-xs py-1 px-2"><Pencil size={12} /></button>
+            {statusActions}
+            <button
+              onClick={() => onEdit(guest)}
+              className="btn-secondary text-xs py-1 px-2"
+            >
+              <Pencil size={12} />
+            </button>
             {isParent && (
-              <button onClick={() => onAddChild(guest)} className="btn-secondary text-xs py-1 px-2 text-primary-600">
+              <button
+                onClick={() => onAddChild(guest)}
+                className="btn-secondary text-xs py-1 px-2 text-primary-600"
+              >
                 <UserPlus size={12} />
               </button>
             )}
-            <button onClick={() => onDelete(guest)} className="btn-danger text-xs py-1 px-2"><Trash2 size={12} /></button>
+            <button
+              onClick={() => onDelete(guest)}
+              className="btn-danger text-xs py-1 px-2"
+            >
+              <Trash2 size={12} />
+            </button>
           </div>
         </td>
       </tr>
-      {isParent && expanded && hasChildren && guest.children.map(child => (
-        <GuestRow
-          key={child.id}
-          guest={child}
-          depth={depth + 1}
-          onViewCard={onViewCard}
-          onEdit={onEdit}
-          onDelete={onDelete}
-          onCheckin={onCheckin}
-          onCheckout={onCheckout}
-          onAddChild={onAddChild}
-        />
-      ))}
+      {isParent &&
+        expanded &&
+        hasChildren &&
+        guest.children.map((child) => (
+          <GuestRow
+            key={child.id}
+            guest={child}
+            depth={depth + 1}
+            onViewCard={onViewCard}
+            onEdit={onEdit}
+            onDelete={onDelete}
+            onCheckin={onCheckin}
+            onStepOut={onStepOut}
+            onFinalExit={onFinalExit}
+            onReopen={onReopen}
+            onAddChild={onAddChild}
+          />
+        ))}
     </>
   );
 }
@@ -149,13 +286,38 @@ function GuestListView() {
     }
   };
 
-  const handleCheckout = async (guest) => {
+  const handleStepOut = async (guest) => {
     try {
-      await api.post(`/guests/${guest.id}/checkout`);
-      toast.success(`${guest.name} checked out`);
+      await api.post(`/guests/${guest.id}/step-out`);
+      toast.success(`${guest.name} stepped out`);
       fetchGuests();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to check out');
+      toast.error(err.response?.data?.error || "Failed to step out");
+    }
+  };
+
+  const handleFinalExit = (guest) => {
+    setConfirmModal({
+      message: `Mark ${guest.name} as finally departed? Re-entry will require admin approval.`,
+      onConfirm: async () => {
+        try {
+          await api.post(`/guests/${guest.id}/final-exit`);
+          toast.success(`${guest.name} departed`);
+          fetchGuests();
+        } catch (err) {
+          toast.error(err.response?.data?.error || "Failed to mark departed");
+        }
+      },
+    });
+  };
+
+  const handleReopen = async (guest) => {
+    try {
+      await api.post(`/guests/${guest.id}/reopen`);
+      toast.success(`${guest.name} reopened for re-entry`);
+      fetchGuests();
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to reopen");
     }
   };
 
@@ -198,19 +360,25 @@ function GuestListView() {
         <h1 className="text-2xl font-bold text-gray-800">Guest List</h1>
         <div className="flex items-center gap-3">
           <div className="relative">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+            <Search
+              size={16}
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"
+            />
             <input
               type="text"
               className="input pl-9 w-60"
               placeholder="Search guests..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
             />
           </div>
           <button onClick={fetchGuests} className="btn-secondary">
             <RefreshCw size={15} />
           </button>
-          <button onClick={() => setFormModal({ mode: 'add-parent' })} className="btn-primary">
+          <button
+            onClick={() => setFormModal({ mode: "add-parent" })}
+            className="btn-primary"
+          >
             <UserPlus size={16} />
             Add Parent
           </button>
@@ -226,9 +394,14 @@ function GuestListView() {
       ) : filteredGuests.length === 0 ? (
         <div className="card text-center py-16 text-gray-400">
           <Users size={40} className="mx-auto mb-3 opacity-40" />
-          <p className="font-medium">{search ? 'No guests match your search' : 'No guests yet'}</p>
+          <p className="font-medium">
+            {search ? "No guests match your search" : "No guests yet"}
+          </p>
           {!search && (
-            <button onClick={() => setFormModal({ mode: 'add-parent' })} className="btn-primary mt-4 mx-auto">
+            <button
+              onClick={() => setFormModal({ mode: "add-parent" })}
+              className="btn-primary mt-4 mx-auto"
+            >
               <UserPlus size={15} /> Add First Guest
             </button>
           )}
@@ -239,25 +412,41 @@ function GuestListView() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Phone</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Seat</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Type</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Name
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Phone
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Seat
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Type
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Status
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
-                {filteredGuests.map(guest => (
+                {filteredGuests.map((guest) => (
                   <GuestRow
                     key={guest.id}
                     guest={guest}
                     onViewCard={setCardGuest}
-                    onEdit={g => setFormModal({ mode: 'edit', guest: g })}
+                    onEdit={(g) => setFormModal({ mode: "edit", guest: g })}
                     onDelete={handleDelete}
                     onCheckin={handleCheckin}
-                    onCheckout={handleCheckout}
-                    onAddChild={g => setFormModal({ mode: 'add-child', parentId: g.id })}
+                    onStepOut={handleStepOut}
+                    onFinalExit={handleFinalExit}
+                    onReopen={handleReopen}
+                    onAddChild={(g) =>
+                      setFormModal({ mode: "add-child", parentId: g.id })
+                    }
                   />
                 ))}
               </tbody>
@@ -267,7 +456,9 @@ function GuestListView() {
       )}
 
       {/* Modals */}
-      {cardGuest && <GuestCard guest={cardGuest} onClose={() => setCardGuest(null)} />}
+      {cardGuest && (
+        <GuestCard guest={cardGuest} onClose={() => setCardGuest(null)} />
+      )}
       {formModal && (
         <GuestFormModal
           mode={formModal.mode}
@@ -298,7 +489,7 @@ function AdminOverview() {
   }, []);
 
   const all = guests.flatMap(p => [p, ...(p.children || [])]);
-  const checkedIn = all.filter(g => g.checked_in);
+  const checkedIn = all.filter((g) => guestStatus(g) === STATUS.INSIDE);
 
   return (
     <div>

@@ -3,6 +3,7 @@ import { Routes, Route, Link, useLocation } from 'react-router-dom';
 import api from '../utils/api';
 import { Users, UserCheck, CheckCircle2, CircleDot, ChevronRight, QrCode } from 'lucide-react';
 import CheckInPanel from './CheckInPanel';
+import { StatusBadge, guestStatus, STATUS } from "../utils/guestStatus";
 
 function ManagerOverview() {
   const [guests, setGuests] = useState([]);
@@ -14,7 +15,7 @@ function ManagerOverview() {
 
   const all = guests.flatMap(p => [p, ...(p.children || [])]);
   const total = all.length;
-  const checkedIn = all.filter(g => g.checked_in);
+  const checkedIn = all.filter((g) => guestStatus(g) === STATUS.INSIDE);
 
   return (
     <div>
@@ -124,7 +125,7 @@ function ManagerGuestList() {
           className="input w-60"
           placeholder="Search guests..."
           value={search}
-          onChange={e => setSearch(e.target.value)}
+          onChange={(e) => setSearch(e.target.value)}
         />
       </div>
 
@@ -138,30 +139,56 @@ function ManagerGuestList() {
             <table className="w-full">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
-                  {['Name', 'Phone', 'Email', 'Seat', 'Type', 'Status'].map(h => (
-                    <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">{h}</th>
-                  ))}
+                  {["Name", "Phone", "Email", "Seat", "Type", "Status"].map(
+                    (h) => (
+                      <th
+                        key={h}
+                        className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider"
+                      >
+                        {h}
+                      </th>
+                    ),
+                  )}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 ? (
-                  <tr><td colSpan={6} className="text-center py-10 text-gray-400">No guests found.</td></tr>
-                ) : filtered.map(g => (
-                  <tr key={g.id} className="border-b border-gray-100 hover:bg-gray-50">
-                    <td className="py-3 px-4 font-medium text-sm text-gray-800">{g.name}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{g.phone || '—'}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{g.email || '—'}</td>
-                    <td className="py-3 px-4 text-sm text-gray-500">{g.seat_number || '—'}</td>
-                    <td className="py-3 px-4">
-                      <span className={`badge ${g.type === 'parent' ? 'badge-purple' : 'badge-blue'}`}>{g.type}</span>
-                    </td>
-                    <td className="py-3 px-4">
-                      {g.checked_in
-                        ? <span className="badge badge-green flex items-center gap-1 w-fit"><CheckCircle2 size={12} />Checked In</span>
-                        : <span className="badge badge-gray flex items-center gap-1 w-fit"><CircleDot size={12} />Pending</span>}
+                  <tr>
+                    <td colSpan={6} className="text-center py-10 text-gray-400">
+                      No guests found.
                     </td>
                   </tr>
-                ))}
+                ) : (
+                  filtered.map((g) => (
+                    <tr
+                      key={g.id}
+                      className="border-b border-gray-100 hover:bg-gray-50"
+                    >
+                      <td className="py-3 px-4 font-medium text-sm text-gray-800">
+                        {g.name}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {g.phone || "—"}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {g.email || "—"}
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-500">
+                        {g.seat_number || "—"}
+                      </td>
+                      <td className="py-3 px-4">
+                        <span
+                          className={`badge ${g.type === "parent" ? "badge-purple" : "badge-blue"}`}
+                        >
+                          {g.type}
+                        </span>
+                      </td>
+                      <td className="py-3 px-4">
+                        <StatusBadge status={guestStatus(g)} />
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>

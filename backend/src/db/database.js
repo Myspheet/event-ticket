@@ -102,8 +102,28 @@ function createAdapter() {
 const db = createAdapter();
 
 // ─── Schema + Seed ───────────────────────────────────────────────
+const isPg = () => DB_TYPE === "postgres" || DB_TYPE === "postgresql";
+
+async function columnExists(table, column) {
+  if (isPg()) {
+    const row = await db.get(
+      `SELECT 1 FROM information_schema.columns WHERE table_name = ? AND column_name = ?`,
+      [table, column],
+    );
+    return !!row;
+  }
+  const rows = await db.all(`PRAGMA table_info(${table})`);
+  return rows.some((r) => r.name === column);
+}
+
+async function addColumnIfMissing(table, column, definition) {
+  if (await columnExists(table, column)) return;
+  await db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  console.log(`[DB] Added column ${table}.${column}`);
+}
+
 async function initializeDatabase() {
-  if (DB_TYPE === "postgres" || DB_TYPE === "postgresql") {
+  if (isPg()) {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,
@@ -138,6 +158,29 @@ async function initializeDatabase() {
     await db.exec(
       `CREATE INDEX IF NOT EXISTS idx_guests_parent_id ON guests(parent_id)`,
     );
+
+    // Audit table
+    await db.exec(`
+      CREATE TABLE IF NOT EXISTS guest_events (
+        id SERIAL PRIMARY KEY,
+        guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        performed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        performed_by_username TEXT,
+        ip TEXT,
+        user_agent TEXT,
+        reason TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_guest_events_guest_id ON guest_events(guest_id)`,
+    );
+    await db.exec(
+      `CREATE INDEX IF NOT EXISTS idx_guest_events_created_at ON guest_events(created_at)`,
+    );
   } else {
     await db.exec(`
       CREATE TABLE IF NOT EXISTS users (
@@ -168,7 +211,66 @@ async function initializeDatabase() {
 
       CREATE INDEX IF NOT EXISTS idx_guests_unique_code ON guests(unique_code);
       CREATE INDEX IF NOT EXISTS idx_guests_parent_id ON guests(parent_id);
+
+      CREATE TABLE IF NOT EXISTS guest_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        guest_id INTEGER NOT NULL REFERENCES guests(id) ON DELETE CASCADE,
+        action TEXT NOT NULL,
+        from_status TEXT,
+        to_status TEXT,
+        performed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        performed_by_username TEXT,
+        ip TEXT,
+        user_agent TEXT,
+        reason TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_guest_events_guest_id ON guest_events(guest_id);
+      CREATE INDEX IF NOT EXISTS idx_guest_events_created_at ON guest_events(created_at);
     `);
+  }
+
+  // ─── Migrations: new re-entry / audit columns on guests ────────
+  await addColumnIfMissing("guests", "status", "TEXT DEFAULT 'pending'");
+  await addColumnIfMissing("guests", "entry_count", "INTEGER DEFAULT 0");
+  await addColumnIfMissing(
+    "guests",
+    "last_action_at",
+    isPg() ? "TIMESTAMP" : "DATETIME",
+  );
+  await addColumnIfMissing("guests", "last_action_by", "INTEGER");
+
+  // Backfill status from legacy `checked_in` flag
+  await db.exec(`
+    UPDATE guests
+       SET status = CASE
+         WHEN checked_in = 1 THEN 'inside'
+         WHEN checked_out_at IS NOT NULL THEN 'stepped_out'
+         ELSE 'pending'
+       END
+     WHERE status IS NULL OR status = ''
+  `);
+
+  // ─── Uniqueness: case-insensitive email + seat_number, when not null ─
+  if (isPg()) {
+    await db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_email_unique
+         ON guests (LOWER(email)) WHERE email IS NOT NULL AND email <> ''`,
+    );
+    await db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_seat_unique
+         ON guests (seat_number) WHERE seat_number IS NOT NULL AND seat_number <> ''`,
+    );
+  } else {
+    await db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_email_unique
+         ON guests (LOWER(email)) WHERE email IS NOT NULL AND email <> ''`,
+    );
+    await db.exec(
+      `CREATE UNIQUE INDEX IF NOT EXISTS idx_guests_seat_unique
+         ON guests (seat_number) WHERE seat_number IS NOT NULL AND seat_number <> ''`,
+    );
   }
 
   await seedUsers();

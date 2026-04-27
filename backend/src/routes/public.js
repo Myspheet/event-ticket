@@ -16,8 +16,10 @@ router.get("/guest/:uniqueCode", async (req, res) => {
     let parent = null;
 
     if (guest.type === "parent") {
+      // Public view: never expose children's backup_code (only the parent's
+      // own backup_code is shown so it can substitute for a failed QR scan).
       children = await db.all(
-        "SELECT id, name, unique_code, backup_code, seat_number, checked_in FROM guests WHERE parent_id = ?",
+        "SELECT id, name, seat_number, checked_in FROM guests WHERE parent_id = ?",
         [guest.id],
       );
     } else if (guest.parent_id) {
