@@ -19,6 +19,7 @@ import {
   Clock,
   Users,
   Ban,
+  Calendar,
 } from "lucide-react";
 import {
   StatusBadge,
@@ -135,7 +136,7 @@ export default function GuestDetailPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary-900 via-primary-700 to-indigo-600 flex items-center justify-center px-4 py-8">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-5xl">
         {isStaff && (
           <button
             onClick={() =>
@@ -149,239 +150,283 @@ export default function GuestDetailPage() {
           </button>
         )}
 
-        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
-          {/* Header */}
-          <div className="bg-gradient-to-r from-primary-900 to-indigo-600 px-6 py-5 flex items-center justify-between">
-            <div>
-              <p className="text-white/70 text-xs font-medium uppercase tracking-wider">
-                {guest.type === "parent" ? "Parent Guest" : "Child Guest"}
-              </p>
-              <h1 className="text-white font-bold text-xl mt-0.5">
-                {guest.name}
-              </h1>
-            </div>
-            <div>
-              {(() => {
-                const s = guestStatus(guest);
-                const map = {
-                  [STATUS.INSIDE]: {
-                    Icon: CheckCircle2,
-                    cls: "bg-white/20 text-white",
-                  },
-                  [STATUS.STEPPED_OUT]: {
-                    Icon: LogOut,
-                    cls: "bg-amber-200/30 text-white",
-                  },
-                  [STATUS.DEPARTED]: {
-                    Icon: Ban,
-                    cls: "bg-red-200/30 text-white",
-                  },
-                  [STATUS.PENDING]: {
-                    Icon: CircleDot,
-                    cls: "bg-white/10 text-white/70",
-                  },
-                };
-                const { Icon, cls } = map[s] || map[STATUS.PENDING];
-                return (
-                  <div
-                    className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${cls}`}
-                  >
-                    <Icon size={14} />
-                    {statusLabel(s)}
-                  </div>
-                );
-              })()}
-            </div>
-          </div>
-
-          {/* Details */}
-          <div className="p-6 space-y-4">
-            <Detail icon={User} label="Full Name" value={guest.name} />
-            <Detail icon={Phone} label="Phone" value={guest.phone} />
-            <Detail icon={Mail} label="Email" value={guest.email} />
-            <Detail
-              icon={MapPin}
-              label="Seat Number"
-              value={guest.seat_number}
+        <div className="bg-white rounded-2xl shadow-2xl overflow-hidden grid md:grid-cols-2">
+          {/* Invitation image (left on desktop, top on mobile) */}
+          <div className="bg-gray-50 flex items-center justify-center md:border-r border-gray-100">
+            <img
+              src="/faith-wedding.jpeg"
+              alt="Wedding Invitation"
+              className="w-full h-full object-cover md:max-h-[900px]"
+              loading="eager"
             />
-            {guest.checked_in_at && (
-              <Detail
-                icon={Clock}
-                label="Checked In At"
-                value={new Date(guest.checked_in_at).toLocaleString()}
-              />
-            )}
-            {guest.checked_out_at && (
-              <Detail
-                icon={Clock}
-                label="Last Checked Out"
-                value={new Date(guest.checked_out_at).toLocaleString()}
-              />
-            )}
           </div>
 
-          {/* Children codes (parent view) */}
-          {guest.type === "parent" && guest.children?.length > 0 && (
-            <div className="mx-6 mb-6 bg-blue-50 rounded-xl p-4 border border-blue-100">
-              <div className="flex items-center gap-2 mb-3">
-                <Users size={15} className="text-blue-600" />
-                <p className="text-sm font-semibold text-blue-800">
-                  Linked Children
+          {/* Right column: all guest details */}
+          <div className="flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-primary-900 to-indigo-600 px-6 py-5 flex items-center justify-between">
+              <div>
+                <p className="text-white/70 text-xs font-medium uppercase tracking-wider">
+                  {guest.type === "parent" ? "Parent Guest" : "Child Guest"}
                 </p>
+                <h1 className="text-white font-bold text-xl mt-0.5">
+                  {guest.name}
+                </h1>
               </div>
-              <div className="space-y-3">
-                {guest.children.map((child) => (
-                  <div
-                    key={child.id}
-                    className="flex items-center gap-3 bg-white rounded-lg p-3 border border-blue-100"
-                  >
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-800 text-sm">
-                        {child.name}
-                      </p>
-                      {child.backup_code && (
-                        <p className="text-xs font-mono text-blue-600 mt-0.5 tracking-wider">
-                          {child.backup_code}
-                        </p>
-                      )}
-                      {child.seat_number && (
-                        <p className="text-xs text-gray-400 mt-0.5">
-                          Seat: {child.seat_number}
-                        </p>
-                      )}
+              <div>
+                {(() => {
+                  const s = guestStatus(guest);
+                  const map = {
+                    [STATUS.INSIDE]: {
+                      Icon: CheckCircle2,
+                      cls: "bg-white/20 text-white",
+                    },
+                    [STATUS.STEPPED_OUT]: {
+                      Icon: LogOut,
+                      cls: "bg-amber-200/30 text-white",
+                    },
+                    [STATUS.DEPARTED]: {
+                      Icon: Ban,
+                      cls: "bg-red-200/30 text-white",
+                    },
+                    [STATUS.PENDING]: {
+                      Icon: CircleDot,
+                      cls: "bg-white/10 text-white/70",
+                    },
+                  };
+                  const { Icon, cls } = map[s] || map[STATUS.PENDING];
+                  return (
+                    <div
+                      className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium ${cls}`}
+                    >
+                      <Icon size={14} />
+                      {statusLabel(s)}
                     </div>
-                    <StatusBadge status={guestStatus(child)} />
-                  </div>
-                ))}
+                  );
+                })()}
               </div>
-              {isStaff && (
-                <p className="text-xs text-blue-500 mt-3">
-                  Share the backup codes above with your children for check-in.
-                </p>
+            </div>
+
+            {/* Details */}
+            <div className="p-6 space-y-4">
+              <Detail icon={User} label="Full Name" value={guest.name} />
+              <Detail icon={Phone} label="Phone" value={guest.phone} />
+              <Detail icon={Mail} label="Email" value={guest.email} />
+              <Detail
+                icon={MapPin}
+                label="Seat Number"
+                value={guest.seat_number}
+              />
+              {guest.checked_in_at && (
+                <Detail
+                  icon={Clock}
+                  label="Checked In At"
+                  value={new Date(guest.checked_in_at).toLocaleString()}
+                />
+              )}
+              {guest.checked_out_at && (
+                <Detail
+                  icon={Clock}
+                  label="Last Checked Out"
+                  value={new Date(guest.checked_out_at).toLocaleString()}
+                />
               )}
             </div>
-          )}
 
-          {/* Parent info if child */}
-          {guest.type === "child" && guest.parent && (
-            <div className="mx-6 mb-4 bg-purple-50 rounded-xl p-3 border border-purple-100 text-sm">
-              <p className="text-purple-700 font-medium">
-                Parent: {guest.parent.name}
-              </p>
-            </div>
-          )}
-
-          {/* Backup code */}
-          <div className="mx-6 mb-6">
-            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl px-4 py-3 text-center">
-              <p className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">
-                Backup Code
-              </p>
-              <p className="text-gray-800 font-bold text-lg tracking-[0.2em] font-mono">
-                {guest.backup_code}
-              </p>
-            </div>
-          </div>
-
-          {/* Check-in / out for staff */}
-          {isStaff && (
-            <div className="px-6 pb-6 space-y-2">
-              {(() => {
-                const s = guestStatus(guest);
-                const spinner = (
-                  <span className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                );
-                if (s === STATUS.INSIDE) {
-                  return (
-                    <>
-                      <button
-                        onClick={handleStepOut}
-                        disabled={actionLoading}
-                        className="btn-warning w-full justify-center py-3 text-base"
-                      >
-                        {actionLoading ? (
-                          spinner
-                        ) : (
-                          <>
-                            <LogOut size={18} />
-                            Step Out (allow re-entry)
-                          </>
+            {/* Children codes (parent view) */}
+            {guest.type === "parent" && guest.children?.length > 0 && (
+              <div className="mx-6 mb-6 bg-blue-50 rounded-xl p-4 border border-blue-100">
+                <div className="flex items-center gap-2 mb-3">
+                  <Users size={15} className="text-blue-600" />
+                  <p className="text-sm font-semibold text-blue-800">
+                    Linked Children
+                  </p>
+                </div>
+                <div className="space-y-3">
+                  {guest.children.map((child) => (
+                    <div
+                      key={child.id}
+                      className="flex items-center gap-3 bg-white rounded-lg p-3 border border-blue-100"
+                    >
+                      <div className="flex-1">
+                        <p className="font-medium text-gray-800 text-sm">
+                          {child.name}
+                        </p>
+                        {child.backup_code && (
+                          <p className="text-xs font-mono text-blue-600 mt-0.5 tracking-wider">
+                            {child.backup_code}
+                          </p>
                         )}
-                      </button>
-                      <button
-                        onClick={handleFinalExit}
-                        disabled={actionLoading}
-                        className="btn-danger w-full justify-center py-3 text-base"
-                      >
-                        {actionLoading ? (
-                          spinner
-                        ) : (
-                          <>
-                            <UserX size={18} />
-                            Final Exit
-                          </>
+                        {child.seat_number && (
+                          <p className="text-xs text-gray-400 mt-0.5">
+                            Seat: {child.seat_number}
+                          </p>
                         )}
-                      </button>
-                    </>
+                      </div>
+                      <StatusBadge status={guestStatus(child)} />
+                    </div>
+                  ))}
+                </div>
+                {isStaff && (
+                  <p className="text-xs text-blue-500 mt-3">
+                    Share the backup codes above with your children for
+                    check-in.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* Parent info if child */}
+            {guest.type === "child" && guest.parent && (
+              <div className="mx-6 mb-4 bg-purple-50 rounded-xl p-3 border border-purple-100 text-sm">
+                <p className="text-purple-700 font-medium">
+                  Parent: {guest.parent.name}
+                </p>
+              </div>
+            )}
+
+            {/* Venue */}
+            <div className="mx-6 mb-4">
+              <div className="bg-gradient-to-br from-primary-50 to-indigo-50 border border-primary-100 rounded-xl p-4">
+                <div className="flex items-center gap-2 mb-2">
+                  <MapPin size={16} className="text-primary-700" />
+                  <p className="text-sm font-semibold text-primary-900 uppercase tracking-wider">
+                    Reception Venue
+                  </p>
+                </div>
+                <p className="text-gray-900 font-semibold text-base">
+                  Proxima Centauri Hotel
+                </p>
+                <p className="text-gray-600 text-sm leading-relaxed mt-0.5">
+                  #5 Unity Close, Golden Valley Estate
+                  <br />
+                  Woji, Port Harcourt
+                </p>
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t border-primary-100">
+                  <Calendar size={14} className="text-primary-700" />
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">Date &amp; Time:</span>{" "}
+                    <span className="text-gray-700">
+                      Saturday, 16 May 2026 · 2:00 PM
+                    </span>
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Backup code */}
+            <div className="mx-6 mb-6">
+              <div className="bg-gray-50 border border-dashed border-gray-300 rounded-xl px-4 py-3 text-center">
+                <p className="text-gray-400 text-xs font-medium uppercase tracking-wider mb-1">
+                  Backup Code
+                </p>
+                <p className="text-gray-800 font-bold text-lg tracking-[0.2em] font-mono">
+                  {guest.backup_code}
+                </p>
+              </div>
+            </div>
+
+            {/* Check-in / out for staff */}
+            {isStaff && (
+              <div className="px-6 pb-6 space-y-2">
+                {(() => {
+                  const s = guestStatus(guest);
+                  const spinner = (
+                    <span className="h-5 w-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                   );
-                }
-                if (s === STATUS.DEPARTED) {
-                  return isAdmin ? (
+                  if (s === STATUS.INSIDE) {
+                    return (
+                      <>
+                        <button
+                          onClick={handleStepOut}
+                          disabled={actionLoading}
+                          className="btn-warning w-full justify-center py-3 text-base"
+                        >
+                          {actionLoading ? (
+                            spinner
+                          ) : (
+                            <>
+                              <LogOut size={18} />
+                              Step Out (allow re-entry)
+                            </>
+                          )}
+                        </button>
+                        <button
+                          onClick={handleFinalExit}
+                          disabled={actionLoading}
+                          className="btn-danger w-full justify-center py-3 text-base"
+                        >
+                          {actionLoading ? (
+                            spinner
+                          ) : (
+                            <>
+                              <UserX size={18} />
+                              Final Exit
+                            </>
+                          )}
+                        </button>
+                      </>
+                    );
+                  }
+                  if (s === STATUS.DEPARTED) {
+                    return isAdmin ? (
+                      <button
+                        onClick={handleReopen}
+                        disabled={actionLoading}
+                        className="btn-primary w-full justify-center py-3 text-base"
+                      >
+                        {actionLoading ? (
+                          spinner
+                        ) : (
+                          <>
+                            <RotateCcw size={18} />
+                            Reopen for Re-entry
+                          </>
+                        )}
+                      </button>
+                    ) : (
+                      <p className="text-sm text-red-600 text-center">
+                        Guest has finally departed. Ask an admin to reopen the
+                        pass.
+                      </p>
+                    );
+                  }
+                  return (
                     <button
-                      onClick={handleReopen}
+                      onClick={handleCheckin}
                       disabled={actionLoading}
-                      className="btn-primary w-full justify-center py-3 text-base"
+                      className="btn-success w-full justify-center py-3 text-base"
                     >
                       {actionLoading ? (
                         spinner
                       ) : (
                         <>
-                          <RotateCcw size={18} />
-                          Reopen for Re-entry
+                          <UserCheck size={18} />
+                          {s === STATUS.STEPPED_OUT
+                            ? "Re-enter Guest"
+                            : "Check In Guest"}
                         </>
                       )}
                     </button>
-                  ) : (
-                    <p className="text-sm text-red-600 text-center">
-                      Guest has finally departed. Ask an admin to reopen the
-                      pass.
-                    </p>
                   );
-                }
-                return (
-                  <button
-                    onClick={handleCheckin}
-                    disabled={actionLoading}
-                    className="btn-success w-full justify-center py-3 text-base"
-                  >
-                    {actionLoading ? (
-                      spinner
-                    ) : (
-                      <>
-                        <UserCheck size={18} />
-                        {s === STATUS.STEPPED_OUT
-                          ? "Re-enter Guest"
-                          : "Check In Guest"}
-                      </>
-                    )}
-                  </button>
-                );
-              })()}
-              {typeof guest.entry_count === "number" && (
-                <p className="text-xs text-gray-400 text-center pt-1">
-                  Entries so far: {guest.entry_count}
-                </p>
-              )}
-            </div>
-          )}
+                })()}
+                {typeof guest.entry_count === "number" && (
+                  <p className="text-xs text-gray-400 text-center pt-1">
+                    Entries so far: {guest.entry_count}
+                  </p>
+                )}
+              </div>
+            )}
 
-          {!isStaff && (
-            <div className="px-6 pb-6">
-              <p className="text-xs text-gray-400 text-center">
-                Present this page or backup code to staff at the event entrance.
-              </p>
-            </div>
-          )}
+            {!isStaff && (
+              <div className="px-6 pb-6">
+                <p className="text-xs text-gray-400 text-center">
+                  Present this page or backup code to staff at the event
+                  entrance.
+                </p>
+              </div>
+            )}
+          </div>
         </div>
 
         <p className="text-white/40 text-xs text-center mt-4">
