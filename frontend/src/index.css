@@ -48,4 +48,10 @@
   .badge-purple {
     @apply badge bg-purple-100 text-purple-800;
   }
+  .badge-amber {
+    @apply badge bg-amber-100 text-amber-800;
+  }
+  .badge-red {
+    @apply badge bg-red-100 text-red-800;
+  }
 }
