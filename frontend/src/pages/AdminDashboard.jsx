@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
-import api from '../utils/api';
-import toast from 'react-hot-toast';
+import React, { useState, useEffect, useCallback } from "react";
+import { Routes, Route, Link, useLocation } from "react-router-dom";
+import api from "../utils/api";
+import toast from "react-hot-toast";
 import {
   Users,
   UserCheck,
@@ -19,20 +19,21 @@ import {
   CheckCircle2,
   CircleDot,
   LayoutDashboard,
+  Mail,
 } from "lucide-react";
-import GuestCard from '../components/GuestCard';
-import GuestFormModal from '../components/GuestFormModal';
-import ConfirmModal from '../components/ConfirmModal';
-import CheckInPanel from './CheckInPanel';
+import GuestCard from "../components/GuestCard";
+import GuestFormModal from "../components/GuestFormModal";
+import ConfirmModal from "../components/ConfirmModal";
+import CheckInPanel from "./CheckInPanel";
 import { StatusBadge, guestStatus, STATUS } from "../utils/guestStatus";
 
 // ─── Stats cards ────────────────────────────────────────────
 function StatsBar({ guests }) {
-  const all = guests.flatMap(p => [p, ...(p.children || [])]);
+  const all = guests.flatMap((p) => [p, ...(p.children || [])]);
   const total = all.length;
   const inside = all.filter((g) => guestStatus(g) === STATUS.INSIDE).length;
   const parents = guests.length;
-  const children = all.filter(g => g.type === 'child').length;
+  const children = all.filter((g) => g.type === "child").length;
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
@@ -82,9 +83,13 @@ function StatsBar({ guests }) {
 function GuestRow({
   guest,
   depth = 0,
+  isSelected,
+  isGuestSelected,
+  onToggleSelect,
   onViewCard,
   onEdit,
   onDelete,
+  onResendInvite,
   onCheckin,
   onStepOut,
   onFinalExit,
@@ -148,6 +153,15 @@ function GuestRow({
         className={`border-b border-gray-100 hover:bg-gray-50 transition-colors ${depth > 0 ? "bg-blue-50/30" : ""}`}
       >
         <td className="py-3 px-4">
+          <input
+            type="checkbox"
+            className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            checked={isGuestSelected ? isGuestSelected(guest.id) : isSelected}
+            onChange={() => onToggleSelect(guest.id)}
+            aria-label={`Select ${guest.name}`}
+          />
+        </td>
+        <td className="py-3 px-4">
           <div
             className="flex items-center gap-2"
             style={{ paddingLeft: depth * 24 }}
@@ -207,6 +221,13 @@ function GuestRow({
               <CreditCard size={12} />
               Card
             </button>
+            <button
+              onClick={() => onResendInvite(guest)}
+              className="btn-secondary text-xs py-1 px-2 text-primary-600"
+            >
+              <Mail size={12} />
+              Resend
+            </button>
             {statusActions}
             <button
               onClick={() => onEdit(guest)}
@@ -239,9 +260,12 @@ function GuestRow({
             key={child.id}
             guest={child}
             depth={depth + 1}
+            isGuestSelected={isGuestSelected}
+            onToggleSelect={onToggleSelect}
             onViewCard={onViewCard}
             onEdit={onEdit}
             onDelete={onDelete}
+            onResendInvite={onResendInvite}
             onCheckin={onCheckin}
             onStepOut={onStepOut}
             onFinalExit={onFinalExit}
@@ -257,24 +281,28 @@ function GuestRow({
 function GuestListView() {
   const [guests, setGuests] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState("");
   const [cardGuest, setCardGuest] = useState(null);
   const [formModal, setFormModal] = useState(null); // { mode, guest?, parentId? }
   const [confirmModal, setConfirmModal] = useState(null);
+  const [selectedGuestIds, setSelectedGuestIds] = useState([]);
+  const [emailing, setEmailing] = useState(false);
 
   const fetchGuests = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await api.get('/guests');
+      const res = await api.get("/guests");
       setGuests(res.data);
     } catch {
-      toast.error('Failed to load guests');
+      toast.error("Failed to load guests");
     } finally {
       setLoading(false);
     }
   }, []);
 
-  useEffect(() => { fetchGuests(); }, [fetchGuests]);
+  useEffect(() => {
+    fetchGuests();
+  }, [fetchGuests]);
 
   const handleCheckin = async (guest) => {
     try {
@@ -282,7 +310,7 @@ function GuestListView() {
       toast.success(`${guest.name} checked in`);
       fetchGuests();
     } catch (err) {
-      toast.error(err.response?.data?.error || 'Failed to check in');
+      toast.error(err.response?.data?.error || "Failed to check in");
     }
   };
 
@@ -323,36 +351,137 @@ function GuestListView() {
 
   const handleDelete = (guest) => {
     setConfirmModal({
-      message: `Delete ${guest.name}? ${guest.type === 'parent' ? 'This will also delete all linked children.' : ''}`,
+      message: `Delete ${guest.name}? ${guest.type === "parent" ? "This will also delete all linked children." : ""}`,
       onConfirm: async () => {
         try {
           await api.delete(`/guests/${guest.id}`);
-          toast.success('Guest deleted');
+          toast.success("Guest deleted");
           fetchGuests();
         } catch {
-          toast.error('Failed to delete');
+          toast.error("Failed to delete");
         }
       },
     });
+  };
+
+  const toggleGuestSelection = (guestId) => {
+    setSelectedGuestIds((current) =>
+      current.includes(guestId)
+        ? current.filter((id) => id !== guestId)
+        : [...current, guestId],
+    );
   };
 
   const handleFormSuccess = (newGuest) => {
     setFormModal(null);
     fetchGuests();
     // Show card for newly created guest
-    if (formModal?.mode !== 'edit') {
+    if (formModal?.mode !== "edit") {
       setCardGuest(newGuest);
     }
   };
 
   const filteredGuests = search.trim()
-    ? guests.filter(p => {
+    ? guests.filter((p) => {
         const q = search.toLowerCase();
-        const matchParent = p.name.toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q) || (p.phone || '').includes(q);
-        const matchChild = (p.children || []).some(c => c.name.toLowerCase().includes(q) || (c.email || '').toLowerCase().includes(q));
+        const matchParent =
+          p.name.toLowerCase().includes(q) ||
+          (p.email || "").toLowerCase().includes(q) ||
+          (p.phone || "").includes(q);
+        const matchChild = (p.children || []).some(
+          (c) =>
+            c.name.toLowerCase().includes(q) ||
+            (c.email || "").toLowerCase().includes(q),
+        );
         return matchParent || matchChild;
       })
     : guests;
+
+  const visibleGuestIds = filteredGuests.flatMap((guest) => [
+    guest.id,
+    ...(guest.children || []).map((child) => child.id),
+  ]);
+  const selectedVisibleCount = visibleGuestIds.filter((id) =>
+    selectedGuestIds.includes(id),
+  ).length;
+  const allVisibleSelected =
+    visibleGuestIds.length > 0 &&
+    selectedVisibleCount === visibleGuestIds.length;
+
+  const toggleSelectAllVisible = () => {
+    setSelectedGuestIds((current) => {
+      if (allVisibleSelected) {
+        return current.filter((id) => !visibleGuestIds.includes(id));
+      }
+
+      return Array.from(new Set([...current, ...visibleGuestIds]));
+    });
+  };
+
+  const showBulkSummary = (data) => {
+    const summary =
+      `${data.sent} sent` + (data.skipped ? `, ${data.skipped} skipped` : "");
+    if (data.sent > 0) {
+      toast.success(summary);
+    } else {
+      toast.error(summary);
+    }
+  };
+
+  const submitBulkResend = async (payload, onSuccess) => {
+    setEmailing(true);
+    try {
+      const res = await api.post("/guests/resend-invites", payload);
+      showBulkSummary(res.data);
+      onSuccess?.(res.data);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to resend invites");
+    } finally {
+      setEmailing(false);
+    }
+  };
+
+  const handleResendInvite = async (guest) => {
+    try {
+      const res = await api.post(`/guests/${guest.id}/resend-invite`);
+      toast.success(`Invite resent for ${res.data.guestName}`);
+    } catch (err) {
+      toast.error(err.response?.data?.error || "Failed to resend invite");
+    }
+  };
+
+  const handleResendSelected = () => {
+    if (selectedGuestIds.length === 0) {
+      toast.error("Select at least one guest");
+      return;
+    }
+
+    setConfirmModal({
+      message: `Resend invites to ${selectedGuestIds.length} selected guest${selectedGuestIds.length === 1 ? "" : "s"}?`,
+      danger: false,
+      onConfirm: () =>
+        submitBulkResend({ guestIds: selectedGuestIds }, () => {
+          setSelectedGuestIds([]);
+        }),
+    });
+  };
+
+  const handleResendAll = () => {
+    const totalGuests = guests.reduce(
+      (count, guest) => count + 1 + (guest.children?.length || 0),
+      0,
+    );
+    if (totalGuests === 0) {
+      toast.error("No guests available");
+      return;
+    }
+
+    setConfirmModal({
+      message: `Resend invites to all ${totalGuests} guests?`,
+      danger: false,
+      onConfirm: () => submitBulkResend({ all: true }),
+    });
+  };
 
   return (
     <div>
@@ -376,6 +505,22 @@ function GuestListView() {
             <RefreshCw size={15} />
           </button>
           <button
+            onClick={handleResendSelected}
+            disabled={emailing || selectedGuestIds.length === 0}
+            className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Mail size={15} />
+            Send to Selected
+          </button>
+          <button
+            onClick={handleResendAll}
+            disabled={emailing || guests.length === 0}
+            className="btn-secondary disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Mail size={15} />
+            Resend All Invites
+          </button>
+          <button
             onClick={() => setFormModal({ mode: "add-parent" })}
             className="btn-primary"
           >
@@ -386,6 +531,21 @@ function GuestListView() {
       </div>
 
       <StatsBar guests={guests} />
+
+      {selectedGuestIds.length > 0 && (
+        <div className="card mb-4 flex items-center justify-between gap-3 flex-wrap border border-primary-100 bg-primary-50/70">
+          <p className="text-sm text-primary-900 font-medium">
+            {selectedGuestIds.length} guest
+            {selectedGuestIds.length === 1 ? "" : "s"} selected
+          </p>
+          <button
+            onClick={() => setSelectedGuestIds([])}
+            className="text-sm text-primary-700 hover:text-primary-900"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -413,6 +573,15 @@ function GuestListView() {
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-100">
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      aria-label="Select all visible guests"
+                    />
+                  </th>
+                  <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                     Name
                   </th>
                   <th className="text-left py-3 px-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">
@@ -437,9 +606,15 @@ function GuestListView() {
                   <GuestRow
                     key={guest.id}
                     guest={guest}
+                    isSelected={selectedGuestIds.includes(guest.id)}
+                    isGuestSelected={(guestId) =>
+                      selectedGuestIds.includes(guestId)
+                    }
+                    onToggleSelect={toggleGuestSelection}
                     onViewCard={setCardGuest}
                     onEdit={(g) => setFormModal({ mode: "edit", guest: g })}
                     onDelete={handleDelete}
+                    onResendInvite={handleResendInvite}
                     onCheckin={handleCheckin}
                     onStepOut={handleStepOut}
                     onFinalExit={handleFinalExit}
@@ -473,6 +648,7 @@ function GuestListView() {
           message={confirmModal.message}
           onConfirm={confirmModal.onConfirm}
           onClose={() => setConfirmModal(null)}
+          danger={confirmModal.danger}
         />
       )}
     </div>
@@ -485,16 +661,21 @@ function AdminOverview() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.get('/guests').then(res => setGuests(res.data)).finally(() => setLoading(false));
+    api
+      .get("/guests")
+      .then((res) => setGuests(res.data))
+      .finally(() => setLoading(false));
   }, []);
 
-  const all = guests.flatMap(p => [p, ...(p.children || [])]);
+  const all = guests.flatMap((p) => [p, ...(p.children || [])]);
   const checkedIn = all.filter((g) => guestStatus(g) === STATUS.INSIDE);
 
   return (
     <div>
       <h1 className="text-2xl font-bold text-gray-800 mb-2">Admin Dashboard</h1>
-      <p className="text-gray-500 mb-8">Welcome back! Here's a snapshot of the event.</p>
+      <p className="text-gray-500 mb-8">
+        Welcome back! Here's a snapshot of the event.
+      </p>
 
       {loading ? (
         <div className="flex items-center justify-center py-16">
@@ -507,25 +688,41 @@ function AdminOverview() {
           <div className="grid md:grid-cols-2 gap-6">
             {/* Quick actions */}
             <div className="card">
-              <h2 className="font-semibold text-gray-800 mb-4">Quick Actions</h2>
+              <h2 className="font-semibold text-gray-800 mb-4">
+                Quick Actions
+              </h2>
               <div className="space-y-3">
-                <Link to="/admin/guests" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 transition-all group">
+                <Link
+                  to="/admin/guests"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-primary-400 hover:bg-primary-50 transition-all group"
+                >
                   <div className="w-9 h-9 bg-primary-100 rounded-lg flex items-center justify-center group-hover:bg-primary-200 transition-colors">
                     <Users size={18} className="text-primary-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-sm text-gray-800">Manage Guests</p>
-                    <p className="text-xs text-gray-400">Add, edit, or remove guests</p>
+                    <p className="font-medium text-sm text-gray-800">
+                      Manage Guests
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Add, edit, or remove guests
+                    </p>
                   </div>
                   <ChevronRight size={16} className="ml-auto text-gray-400" />
                 </Link>
-                <Link to="/admin/checkin" className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all group">
+                <Link
+                  to="/admin/checkin"
+                  className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 hover:border-emerald-400 hover:bg-emerald-50 transition-all group"
+                >
                   <div className="w-9 h-9 bg-emerald-100 rounded-lg flex items-center justify-center group-hover:bg-emerald-200 transition-colors">
                     <UserCheck size={18} className="text-emerald-600" />
                   </div>
                   <div>
-                    <p className="font-medium text-sm text-gray-800">Check In / Out</p>
-                    <p className="text-xs text-gray-400">Scan QR or enter backup code</p>
+                    <p className="font-medium text-sm text-gray-800">
+                      Check In / Out
+                    </p>
+                    <p className="text-xs text-gray-400">
+                      Scan QR or enter backup code
+                    </p>
                   </div>
                   <ChevronRight size={16} className="ml-auto text-gray-400" />
                 </Link>
@@ -536,26 +733,48 @@ function AdminOverview() {
             <div className="card">
               <h2 className="font-semibold text-gray-800 mb-4">
                 Recently Checked In
-                <span className="ml-2 badge badge-green">{checkedIn.length}</span>
+                <span className="ml-2 badge badge-green">
+                  {checkedIn.length}
+                </span>
               </h2>
               {checkedIn.length === 0 ? (
-                <p className="text-gray-400 text-sm text-center py-6">No guests checked in yet.</p>
+                <p className="text-gray-400 text-sm text-center py-6">
+                  No guests checked in yet.
+                </p>
               ) : (
                 <ul className="space-y-2 max-h-64 overflow-y-auto">
-                  {[...checkedIn].sort((a, b) => new Date(b.checked_in_at) - new Date(a.checked_in_at)).slice(0, 10).map(g => (
-                    <li key={g.id} className="flex items-center gap-3 text-sm">
-                      <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                        <CheckCircle2 size={14} className="text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="font-medium text-gray-700">{g.name}</p>
-                        {g.checked_in_at && (
-                          <p className="text-xs text-gray-400">{new Date(g.checked_in_at).toLocaleTimeString()}</p>
-                        )}
-                      </div>
-                      <span className={`ml-auto badge ${g.type === 'parent' ? 'badge-purple' : 'badge-blue'}`}>{g.type}</span>
-                    </li>
-                  ))}
+                  {[...checkedIn]
+                    .sort(
+                      (a, b) =>
+                        new Date(b.checked_in_at) - new Date(a.checked_in_at),
+                    )
+                    .slice(0, 10)
+                    .map((g) => (
+                      <li
+                        key={g.id}
+                        className="flex items-center gap-3 text-sm"
+                      >
+                        <div className="w-7 h-7 rounded-full bg-emerald-100 flex items-center justify-center flex-shrink-0">
+                          <CheckCircle2
+                            size={14}
+                            className="text-emerald-600"
+                          />
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-700">{g.name}</p>
+                          {g.checked_in_at && (
+                            <p className="text-xs text-gray-400">
+                              {new Date(g.checked_in_at).toLocaleTimeString()}
+                            </p>
+                          )}
+                        </div>
+                        <span
+                          className={`ml-auto badge ${g.type === "parent" ? "badge-purple" : "badge-blue"}`}
+                        >
+                          {g.type}
+                        </span>
+                      </li>
+                    ))}
                 </ul>
               )}
             </div>

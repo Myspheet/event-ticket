@@ -1,9 +1,9 @@
-const express = require('express');
-const { db } = require('../db/database');
-const { authenticateToken, requireRole } = require('../middleware/auth');
-const { generateUniqueCode, generateBackupCode } = require('../utils/codeGen');
-const { generateQRCodeDataUrl } = require('../services/qrService');
-const { sendGuestCardEmail } = require('../services/emailService');
+const express = require("express");
+const { db } = require("../db/database");
+const { authenticateToken, requireRole } = require("../middleware/auth");
+const { generateUniqueCode, generateBackupCode } = require("../utils/codeGen");
+const { generateQRCodeDataUrl } = require("../services/qrService");
+const { sendGuestCardEmail } = require("../services/emailService");
 const {
   STATUS,
   normalizeEmail,
@@ -25,16 +25,105 @@ async function loadGuestById(id) {
   return db.get("SELECT * FROM guests WHERE id = ?", [id]);
 }
 
+async function loadParentGuest(id) {
+  return db.get("SELECT * FROM guests WHERE id = ? AND type = ?", [
+    id,
+    "parent",
+  ]);
+}
+
+function isChildGuestType(guestType) {
+  return guestType === "child";
+}
+
+async function resolveInviteRecipient(guest) {
+  if (guest.type === "child") {
+    const parent = guest.parent_id
+      ? await loadParentGuest(guest.parent_id)
+      : null;
+    return {
+      parent,
+      recipientEmail: parent?.email || null,
+      recipientLabel: parent?.email || null,
+      recipientName: parent?.name || null,
+    };
+  }
+
+  return {
+    parent: null,
+    recipientEmail: guest.email || null,
+    recipientLabel: guest.email || null,
+    recipientName: guest.name,
+  };
+}
+
+async function sendInviteForGuest(guest, req) {
+  const recipient = await resolveInviteRecipient(guest);
+  if (!recipient.recipientEmail) {
+    return {
+      guestId: guest.id,
+      guestName: guest.name,
+      guestType: guest.type,
+      sent: false,
+      skipped: true,
+      reason:
+        guest.type === "child"
+          ? "Parent has no email address"
+          : "Guest has no email address",
+    };
+  }
+
+  const guestUrl = `${process.env.FRONTEND_URL}/guest/${guest.unique_code}`;
+  const qrDataUrl = await generateQRCodeDataUrl(guestUrl);
+  const mailResult = await sendGuestCardEmail(
+    { ...guest, backup_code: guest.backup_code },
+    qrDataUrl,
+    { recipientEmail: recipient.recipientEmail },
+  );
+
+  await logGuestEvent({
+    guestId: guest.id,
+    action: "invite_resent",
+    fromStatus: guest.status,
+    toStatus: guest.status,
+    req,
+    reason:
+      guest.type === "child"
+        ? `Invite resent to parent ${recipient.recipientName}`
+        : `Invite resent to ${recipient.recipientEmail}`,
+  });
+
+  return {
+    guestId: guest.id,
+    guestName: guest.name,
+    guestType: guest.type,
+    sent: true,
+    skipped: false,
+    recipientEmail: mailResult.recipientEmail || recipient.recipientEmail,
+  };
+}
+
+function summarizeInviteResults(results) {
+  return {
+    total: results.length,
+    sent: results.filter((result) => result.sent).length,
+    skipped: results.filter((result) => result.skipped).length,
+  };
+}
+
 /**
  * Validate + normalize input for create/update.
  * Returns { ok: true, data } or { ok: false, status, error }.
  */
-async function validateGuestInput(body, { excludeId = null, partial = false } = {}) {
+async function validateGuestInput(
+  body,
+  { excludeId = null, partial = false, guestType = "parent" } = {},
+) {
   const out = {};
 
   if (!partial || body.name !== undefined) {
     const name = normalizeText(body.name);
-    if (!name) return { ok: false, status: 400, error: 'Name is required' };
+    if (!name) return { ok: false, status: 400, error: "Name is required" };
     out.name = name;
   }
 
@@ -44,20 +133,31 @@ async function validateGuestInput(body, { excludeId = null, partial = false } = 
 
   if (!partial || body.email !== undefined) {
     const email = normalizeEmail(body.email);
-    if (email && !isValidEmail(email)) {
-      return { ok: false, status: 400, error: 'Invalid email format' };
-    }
-    if (email) {
-      const conflict = await findEmailConflict(email, excludeId);
-      if (conflict) {
+    if (isChildGuestType(guestType)) {
+      if (email) {
         return {
           ok: false,
-          status: 409,
-          error: `Email already used by guest "${conflict.name}"`,
+          status: 400,
+          error: "Child guests do not use email addresses",
         };
       }
+      out.email = null;
+    } else {
+      if (email && !isValidEmail(email)) {
+        return { ok: false, status: 400, error: "Invalid email format" };
+      }
+      if (email) {
+        const conflict = await findEmailConflict(email, excludeId);
+        if (conflict) {
+          return {
+            ok: false,
+            status: 409,
+            error: `Email already used by guest "${conflict.name}"`,
+          };
+        }
+      }
+      out.email = email;
     }
-    out.email = email;
   }
 
   if (!partial || body.seat_number !== undefined) {
@@ -82,35 +182,35 @@ async function validateGuestInput(body, { excludeId = null, partial = false } = 
  * Apply a status transition + persist + log.
  */
 async function applyTransition(guest, action, req, { reason = null } = {}) {
-  const isAdmin = req.user?.role === 'admin';
+  const isAdmin = req.user?.role === "admin";
   const decision = validateTransition(guest, action, { isAdmin });
   if (!decision.ok) return decision;
 
   const next = decision.next;
-  const incrementEntry = action === 'checkin';
+  const incrementEntry = action === "checkin";
 
   const sets = [
-    'status = ?',
-    'last_action_at = CURRENT_TIMESTAMP',
-    'last_action_by = ?',
-    'updated_at = CURRENT_TIMESTAMP',
+    "status = ?",
+    "last_action_at = CURRENT_TIMESTAMP",
+    "last_action_by = ?",
+    "updated_at = CURRENT_TIMESTAMP",
   ];
   const params = [next, req.user?.id || null];
 
   if (incrementEntry) {
-    sets.push('entry_count = COALESCE(entry_count, 0) + 1');
-    sets.push('checked_in = 1');
-    sets.push('checked_in_at = CURRENT_TIMESTAMP');
-    sets.push('checked_out_at = NULL');
+    sets.push("entry_count = COALESCE(entry_count, 0) + 1");
+    sets.push("checked_in = 1");
+    sets.push("checked_in_at = CURRENT_TIMESTAMP");
+    sets.push("checked_out_at = NULL");
   } else if (next === STATUS.STEPPED_OUT || next === STATUS.DEPARTED) {
-    sets.push('checked_in = 0');
-    sets.push('checked_out_at = CURRENT_TIMESTAMP');
+    sets.push("checked_in = 0");
+    sets.push("checked_out_at = CURRENT_TIMESTAMP");
   }
 
-  await db.run(
-    `UPDATE guests SET ${sets.join(', ')} WHERE id = ?`,
-    [...params, guest.id],
-  );
+  await db.run(`UPDATE guests SET ${sets.join(", ")} WHERE id = ?`, [
+    ...params,
+    guest.id,
+  ]);
 
   await logGuestEvent({
     guestId: guest.id,
@@ -256,7 +356,7 @@ router.get("/:id", async (req, res) => {
 });
 
 // ─── Create parent ──────────────────────────────────────────────
-router.post('/parent', requireRole('admin'), async (req, res) => {
+router.post("/parent", requireRole("admin"), async (req, res) => {
   try {
     const validated = await validateGuestInput(req.body);
     if (!validated.ok)
@@ -294,7 +394,7 @@ router.post('/parent', requireRole('admin'), async (req, res) => {
 });
 
 // ─── Create child ───────────────────────────────────────────────
-router.post('/child/:parentId', requireRole('admin'), async (req, res) => {
+router.post("/child/:parentId", requireRole("admin"), async (req, res) => {
   try {
     const parentId = parseInt(req.params.parentId);
     const parent = await db.get(
@@ -303,7 +403,9 @@ router.post('/child/:parentId', requireRole('admin'), async (req, res) => {
     );
     if (!parent) return res.status(404).json({ error: "Parent not found" });
 
-    const validated = await validateGuestInput(req.body);
+    const validated = await validateGuestInput(req.body, {
+      guestType: "child",
+    });
     if (!validated.ok)
       return res.status(validated.status).json({ error: validated.error });
     const { name, phone, email, seat_number } = validated.data;
@@ -336,14 +438,73 @@ router.post('/child/:parentId', requireRole('admin'), async (req, res) => {
       req,
     });
 
-    sendGuestCardEmail({ ...guest, backup_code: backupCode }, qrDataUrl).catch(
-      (err) => console.error("[Email] Failed to send:", err.message),
-    );
+    sendGuestCardEmail({ ...guest, backup_code: backupCode }, qrDataUrl, {
+      recipientEmail: parent.email || null,
+    }).catch((err) => console.error("[Email] Failed to send:", err.message));
 
     res.status(201).json({ ...guest, qr_data_url: qrDataUrl });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create child guest" });
+  }
+});
+
+router.post("/resend-invites", requireRole("admin"), async (req, res) => {
+  try {
+    const requestedIds = Array.isArray(req.body?.guestIds)
+      ? req.body.guestIds
+          .map((id) => parseInt(id, 10))
+          .filter((id) => Number.isInteger(id) && id > 0)
+      : [];
+
+    const sendAll = req.body?.all === true;
+    if (!sendAll && requestedIds.length === 0) {
+      return res.status(400).json({ error: "Select at least one guest" });
+    }
+
+    const guests = sendAll
+      ? await db.all("SELECT * FROM guests ORDER BY created_at DESC")
+      : await db.all(
+          `SELECT * FROM guests WHERE id IN (${requestedIds.map(() => "?").join(", ")}) ORDER BY created_at DESC`,
+          requestedIds,
+        );
+
+    if (guests.length === 0) {
+      return res.status(404).json({ error: "No guests found for resend" });
+    }
+
+    const results = [];
+    for (const guest of guests) {
+      results.push(await sendInviteForGuest(guest, req));
+    }
+
+    res.json({
+      ...summarizeInviteResults(results),
+      results,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to resend invites" });
+  }
+});
+
+router.post("/:id/resend-invite", requireRole("admin"), async (req, res) => {
+  try {
+    const guest = await loadGuestById(req.params.id);
+    if (!guest) return res.status(404).json({ error: "Guest not found" });
+
+    const result = await sendInviteForGuest(guest, req);
+    if (result.skipped) {
+      return res.status(409).json({
+        error: result.reason,
+        result,
+      });
+    }
+
+    res.json(result);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to resend invite" });
   }
 });
 
@@ -356,6 +517,7 @@ router.put("/:id", requireRole("admin"), async (req, res) => {
     const validated = await validateGuestInput(req.body, {
       excludeId: guest.id,
       partial: true,
+      guestType: guest.type,
     });
     if (!validated.ok)
       return res.status(validated.status).json({ error: validated.error });
@@ -365,7 +527,11 @@ router.put("/:id", requireRole("admin"), async (req, res) => {
       phone:
         validated.data.phone !== undefined ? validated.data.phone : guest.phone,
       email:
-        validated.data.email !== undefined ? validated.data.email : guest.email,
+        guest.type === "child"
+          ? null
+          : validated.data.email !== undefined
+            ? validated.data.email
+            : guest.email,
       seat_number:
         validated.data.seat_number !== undefined
           ? validated.data.seat_number
@@ -436,29 +602,21 @@ router.post("/:id/step-out", requireRole("admin", "manager"), (req, res) =>
 );
 
 // Final exit: no re-entry without admin reopen
-router.post(
-  "/:id/final-exit",
-  requireRole("admin", "manager"),
-  (req, res) => handleTransition('final_exit', req, res),
+router.post("/:id/final-exit", requireRole("admin", "manager"), (req, res) =>
+  handleTransition("final_exit", req, res),
 );
 
 // Reopen a departed guest (admin only)
-router.post(
-  "/:id/reopen",
-  requireRole("admin"),
-  (req, res) => handleTransition('reopen', req, res),
+router.post("/:id/reopen", requireRole("admin"), (req, res) =>
+  handleTransition("reopen", req, res),
 );
 
 // Backwards-compat: /checkout maps to step-out by default,
 // or final-exit when ?final=1 / { final: true }
-router.post(
-  "/:id/checkout",
-  requireRole("admin", "manager"),
-  (req, res) => {
-    const final = req.body?.final === true || req.query?.final === '1';
-    return handleTransition(final ? 'final_exit' : 'step_out', req, res);
-  },
-);
+router.post("/:id/checkout", requireRole("admin", "manager"), (req, res) => {
+  const final = req.body?.final === true || req.query?.final === "1";
+  return handleTransition(final ? "final_exit" : "step_out", req, res);
+});
 
 // Lookup-and-checkin in a single call, by either unique_code or backup_code
 router.post(
@@ -488,7 +646,7 @@ router.post(
 );
 
 // ─── QR regenerate ──────────────────────────────────────────────
-router.get('/:id/qr', async (req, res) => {
+router.get("/:id/qr", async (req, res) => {
   try {
     const guest = await loadGuestById(req.params.id);
     if (!guest) return res.status(404).json({ error: "Guest not found" });

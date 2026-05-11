@@ -1,4 +1,4 @@
-const nodemailer = require('nodemailer');
+const nodemailer = require("nodemailer");
 const path = require("path");
 const fs = require("fs");
 
@@ -8,19 +8,19 @@ let transporter = null;
 // so the same file is served on the guest detail page and attached to emails.
 const INVITE_IMAGE_PATH = path.resolve(
   __dirname,
-  '../../../frontend/public/faith-wedding.jpeg',
+  "../../../frontend/public/faith-wedding.jpeg",
 );
 const INVITE_IMAGE_EXISTS = fs.existsSync(INVITE_IMAGE_PATH);
 if (!INVITE_IMAGE_EXISTS) {
-  console.warn('[Email] Invitation image not found at', INVITE_IMAGE_PATH);
+  console.warn("[Email] Invitation image not found at", INVITE_IMAGE_PATH);
 }
 
 function getTransporter() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || 'smtp.gmail.com',
-      port: parseInt(process.env.SMTP_PORT || '587'),
-      secure: process.env.SMTP_PORT === '465',
+      host: process.env.SMTP_HOST || "smtp.gmail.com",
+      port: parseInt(process.env.SMTP_PORT || "587"),
+      secure: process.env.SMTP_PORT === "465",
       auth: {
         user: process.env.SMTP_USER,
         pass: process.env.SMTP_PASS,
@@ -35,18 +35,29 @@ function getTransporter() {
  * @param {Object} guest - Guest record
  * @param {string} qrDataUrl - Base64 QR code image
  */
-async function sendGuestCardEmail(guest, qrDataUrl) {
-  if (!process.env.SMTP_USER || process.env.SMTP_USER === 'your_email@gmail.com') {
-    console.warn('[Email] SMTP not configured. Skipping email to', guest.email);
+async function sendGuestCardEmail(guest, qrDataUrl, options = {}) {
+  const recipientEmail =
+    typeof options.recipientEmail === "string" && options.recipientEmail.trim()
+      ? options.recipientEmail.trim().toLowerCase()
+      : guest.email;
+
+  if (
+    !process.env.SMTP_USER ||
+    process.env.SMTP_USER === "your_email@gmail.com"
+  ) {
+    console.warn(
+      "[Email] SMTP not configured. Skipping email to",
+      recipientEmail,
+    );
     return { skipped: true };
   }
 
-  if (!guest.email) {
-    console.warn('[Email] Guest has no email address. Skipping.');
+  if (!recipientEmail) {
+    console.warn("[Email] No recipient email available. Skipping.");
     return { skipped: true };
   }
 
-  const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, '');
+  const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
   const hostsLine = process.env.EVENT_HOSTS || "The Family";
 
   const text = `Dear ${guest.name},
@@ -104,7 +115,7 @@ ${hostsLine}
     from:
       process.env.SMTP_FROM ||
       `"Wedding Invitation" <${process.env.SMTP_USER}>`,
-    to: guest.email,
+    to: recipientEmail,
     subject: "You're Invited — Wedding Reception Access Pass",
     text,
     html,
@@ -127,8 +138,8 @@ ${hostsLine}
     ],
   });
 
-  console.log(`[Email] Sent invitation to ${guest.email}`);
-  return { sent: true };
+  console.log(`[Email] Sent invitation to ${recipientEmail}`);
+  return { sent: true, recipientEmail };
 }
 
 module.exports = { sendGuestCardEmail };

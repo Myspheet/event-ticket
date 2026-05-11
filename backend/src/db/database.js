@@ -252,6 +252,12 @@ async function initializeDatabase() {
      WHERE status IS NULL OR status = ''
   `);
 
+  await db.exec(`
+     UPDATE guests
+       SET email = NULL
+      WHERE type = 'child' AND email IS NOT NULL AND email <> ''
+    `);
+
   // ─── Uniqueness: case-insensitive email + seat_number, when not null ─
   if (isPg()) {
     await db.exec(
