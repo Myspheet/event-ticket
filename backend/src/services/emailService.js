@@ -1,8 +1,8 @@
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 const path = require("path");
 const fs = require("fs");
 
-let transporter = null;
+let resendClient = null;
 
 // Resolve the invitation image once at module load. Lives in frontend/public
 // so the same file is served on the guest detail page and attached to emails.
@@ -15,19 +15,11 @@ if (!INVITE_IMAGE_EXISTS) {
   console.warn("[Email] Invitation image not found at", INVITE_IMAGE_PATH);
 }
 
-function getTransporter() {
-  if (!transporter) {
-    transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST || "smtp.gmail.com",
-      port: parseInt(process.env.SMTP_PORT || "587"),
-      secure: process.env.SMTP_PORT === "465",
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+function getResendClient() {
+  if (!resendClient) {
+    resendClient = new Resend(process.env.RESEND_API_KEY);
   }
-  return transporter;
+  return resendClient;
 }
 
 /**
@@ -36,17 +28,19 @@ function getTransporter() {
  * @param {string} qrDataUrl - Base64 QR code image
  */
 async function sendGuestCardEmail(guest, qrDataUrl, options = {}) {
+  const qrContentId = "guest-qr-image";
   const recipientEmail =
     typeof options.recipientEmail === "string" && options.recipientEmail.trim()
       ? options.recipientEmail.trim().toLowerCase()
       : guest.email;
+  const fromAddress =
+    process.env.RESEND_FROM ||
+    process.env.SMTP_FROM ||
+    "Event Check-In <okwedding2026@techdemystifiedhq.com>";
 
-  if (
-    !process.env.SMTP_USER ||
-    process.env.SMTP_USER === "your_email@gmail.com"
-  ) {
+  if (!process.env.RESEND_API_KEY) {
     console.warn(
-      "[Email] SMTP not configured. Skipping email to",
+      "[Email] Resend is not configured. Skipping email to",
       recipientEmail,
     );
     return { skipped: true };
@@ -57,17 +51,19 @@ async function sendGuestCardEmail(guest, qrDataUrl, options = {}) {
     return { skipped: true };
   }
 
-  const base64Data = qrDataUrl.replace(/^data:image\/png;base64,/, "");
-  const hostsLine = process.env.EVENT_HOSTS || "The Family";
+  const hostsLine = process.env.EVENT_HOSTS || "Onome & Kachi";
+  const inviteImageBase64 = INVITE_IMAGE_EXISTS
+    ? fs.readFileSync(INVITE_IMAGE_PATH).toString("base64")
+    : null;
 
   const text = `Dear ${guest.name},
 
 You are warmly invited to celebrate our wedding with us.
 Please find attached our Church Wedding Invitation Card with ceremony details.
-Your personalized barcode access pass is included in this email and will be required for entry into the reception venue. Kindly present it at the entrance.
-You may scan the barcode beforehand to confirm access and view reception details.
+Your personalized QR code access pass is attached to this email and will be required for entry into the reception venue. Kindly download or open the attachment and present it at the entrance.
+If your email app does not display the QR code in the message body, please use the attached QR code image instead.
 
-We look forward to celebrating this special day with you.
+We look forward to celebrating this special day with you!
 
 Warm regards,
 ${hostsLine}
@@ -81,16 +77,16 @@ ${hostsLine}
         <p style="margin: 0 0 16px;">You are warmly invited to celebrate our wedding with us.</p>
         <p style="margin: 0 0 16px;">Please find attached our Church Wedding Invitation Card with ceremony details.</p>
         <p style="margin: 0 0 16px;">
-          Your personalized barcode access pass is included in this email and will be required for entry into the reception venue.
-          Kindly present it at the entrance.
+          Your personalized QR code access pass is attached to this email and will be required for entry into the reception venue.
+          Kindly download or open the attachment and present it at the entrance.
         </p>
         <p style="margin: 0 0 24px;">
-          You may scan the barcode beforehand to confirm access and view reception details.
+          If your email app does not display the QR code in the message body, please use the attached QR code image instead.
         </p>
 
         <div style="background: #f0f4ff; border-radius: 8px; padding: 24px; text-align: center; margin: 24px 0;">
-          <img src="cid:qrcode" alt="Your access barcode" style="width: 220px; height: 220px; display: block; margin: 0 auto 16px;" />
-          <p style="color: #333; font-size: 13px; margin: 0 0 8px; font-family: Arial, sans-serif;">Scan to confirm access &amp; view reception details</p>
+          <img src="cid:${qrContentId}" alt="Your access barcode" style="width: 220px; height: 220px; display: block; margin: 0 auto 16px;" />
+          <p style="color: #333; font-size: 13px; margin: 0 0 8px; font-family: Arial, sans-serif;">If the QR code does not appear above, find it in the attached file named access-pass.png.</p>
           <div style="background: white; border: 2px dashed #6366f1; border-radius: 6px; padding: 12px; display: inline-block; margin-top: 8px;">
             <p style="color: #6366f1; font-weight: bold; font-size: 18px; letter-spacing: 3px; margin: 0; font-family: 'Courier New', monospace;">
               ${guest.backup_code}
@@ -99,7 +95,7 @@ ${hostsLine}
           </div>
         </div>
 
-        <p style="margin: 0 0 4px;">We look forward to celebrating this special day with you.</p>
+        <p style="margin: 0 0 4px;">We look forward to celebrating this special day with you!</p>
         <p style="margin: 24px 0 0;">Warm regards,<br><strong>${hostsLine}</strong></p>
 
         <div style="border-top: 1px solid #eee; margin-top: 24px; padding-top: 16px;">
@@ -111,10 +107,8 @@ ${hostsLine}
     </div>
   `;
 
-  await getTransporter().sendMail({
-    from:
-      process.env.SMTP_FROM ||
-      `"Wedding Invitation" <${process.env.SMTP_USER}>`,
+  const { data, error } = await getResendClient().emails.send({
+    from: fromAddress,
     to: recipientEmail,
     subject: "You're Invited — Wedding Reception Access Pass",
     text,
@@ -122,15 +116,15 @@ ${hostsLine}
     attachments: [
       {
         filename: "access-pass.png",
-        content: Buffer.from(base64Data, "base64"),
-        cid: "qrcode",
+        content: qrDataUrl.replace(/^data:image\/png;base64,/, ""),
         contentType: "image/png",
+        contentId: qrContentId,
       },
-      ...(INVITE_IMAGE_EXISTS
+      ...(inviteImageBase64
         ? [
             {
               filename: "Church-Wedding-Invitation.jpeg",
-              path: INVITE_IMAGE_PATH,
+              content: inviteImageBase64,
               contentType: "image/jpeg",
             },
           ]
@@ -138,8 +132,12 @@ ${hostsLine}
     ],
   });
 
+  if (error) {
+    throw new Error(error.message || "Failed to send email with Resend");
+  }
+
   console.log(`[Email] Sent invitation to ${recipientEmail}`);
-  return { sent: true, recipientEmail };
+  return { sent: true, recipientEmail, id: data?.id || null };
 }
 
 module.exports = { sendGuestCardEmail };
