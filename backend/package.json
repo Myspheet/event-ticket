@@ -14,9 +14,9 @@
     "express": "^4.18.2",
     "jsonwebtoken": "^9.0.2",
     "nanoid": "^3.3.7",
-    "nodemailer": "^6.9.13",
     "pg": "^8.13.1",
     "qrcode": "^1.5.3",
+    "resend": "^4.1.0",
     "sharp": "^0.33.3"
   },
   "devDependencies": {
